@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>All-pass 90° phase shifter designer</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #eef2f5;
+  --panel: #ffffff;
+  --ink: #14212b;
+  --ink2: #4b5a66;
+  --muted: #66737d;
+  --grid: #d5dde3;
+  --grid-minor: #ebeff2;
+  --axis: #aab6c0;
+  --band: rgba(42, 120, 214, 0.07);
+  --series: #2a78d6;
+  --border: rgba(20, 33, 43, 0.14);
+  --focus: #1c5cab;
+  --danger: #b3261e;
+  --code-bg: #f3f6f8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0e1418;
+    --panel: #172027;
+    --ink: #f2f6f8;
+    --ink2: #b7c2ca;
+    --muted: #8f9ca6;
+    --grid: #2b3842;
+    --grid-minor: #1f2a32;
+    --axis: #455561;
+    --band: rgba(57, 135, 229, 0.10);
+    --series: #3987e5;
+    --border: rgba(255, 255, 255, 0.14);
+    --focus: #86b6ef;
+    --danger: #f2867f;
+    --code-bg: #111a20;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; }
+h1 { font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 8px; }
+h2 { font-size: 18px; line-height: 1.3; font-weight: 650; margin: 0 0 12px; }
+p { margin: 0; }
+.lede { max-width: 70ch; color: var(--ink2); margin-bottom: 24px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 16px 20px; align-items: flex-start; margin-bottom: 20px; }
+.field { display: flex; flex-direction: column; gap: 6px; width: 160px; }
+.field label { font-size: 13px; color: var(--ink2); }
+.field input, .field select {
+  font: inherit; font-variant-numeric: tabular-nums;
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--axis); border-radius: 6px;
+  background: var(--panel); color: var(--ink);
+}
+.field input[aria-invalid="true"] { border-color: var(--danger); }
+.field .err { font-size: 13px; line-height: 1.35; color: var(--danger); }
+.field .err:empty { display: none; }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+.panel + .panel, .cols { margin-top: 20px; }
+.stale { opacity: 0.45; }
+
+.headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 24px; margin-bottom: 16px; }
+.figure { font-size: 56px; line-height: 1; font-weight: 650; letter-spacing: -0.02em; white-space: nowrap; }
+.figure .unit { font-size: 24px; font-weight: 600; letter-spacing: 0; margin-left: 4px; }
+.headline .words { flex: 1 1 320px; max-width: 62ch; }
+.headline .words p + p { color: var(--ink2); }
+
+.charts { position: relative; outline-offset: 4px; }
+figure { margin: 0; }
+figcaption { font-size: 14px; font-weight: 600; margin: 8px 0 2px; }
+.plot svg { display: block; width: 100%; overflow: visible; }
+.plot text { font-size: 12px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.plot .lbl { fill: var(--ink2); }
+.g-major { stroke: var(--grid); stroke-width: 1; }
+.g-minor { stroke: var(--grid-minor); stroke-width: 1; }
+.g-axis { stroke: var(--axis); stroke-width: 1; }
+.g-band { fill: var(--band); }
+.g-ref { stroke: var(--ink2); stroke-width: 1; }
+.g-trace { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.g-cross { stroke: var(--ink2); stroke-width: 1; }
+.g-dot { fill: var(--series); stroke: var(--panel); stroke-width: 2; }
+.xtitle { font-size: 12px; color: var(--muted); text-align: center; margin-top: 2px; }
+.tip {
+  position: absolute; z-index: 2; pointer-events: none; min-width: 172px;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  padding: 8px 10px; font-size: 13px; line-height: 1.45;
+}
+.tip[hidden] { display: none; }
+.tip .t-f { color: var(--ink2); margin-bottom: 2px; }
+.tip .t-row { display: flex; justify-content: space-between; gap: 14px; }
+.tip .t-row b { font-weight: 650; font-variant-numeric: tabular-nums; }
+.tip .t-row span { color: var(--ink2); }
+
+.cols {
+  display: grid; gap: 20px; align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "coef code" "resp code";
+}
+.cols .panel { margin-top: 0; }
+.a-coef { grid-area: coef; } .a-code { grid-area: code; } .a-resp { grid-area: resp; }
+@media (max-width: 900px) {
+  .cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "coef" "code" "resp"; }
+}
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid-minor); }
+th { font-size: 13px; font-weight: 600; color: var(--ink2); border-bottom-color: var(--grid); vertical-align: bottom; }
+th:first-child, td:first-child { text-align: left; padding-left: 0; }
+th:last-child, td:last-child { padding-right: 0; }
+tr.out td { color: var(--muted); }
+td .tag { font-size: 12px; color: var(--ink2); margin-left: 6px; }
+.note { font-size: 13px; color: var(--ink2); margin-top: 10px; max-width: 70ch; }
+
+.codehead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.codehead h2 { margin: 0; }
+button {
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  padding: 7px 14px; border-radius: 6px;
+  border: 1px solid var(--axis); background: var(--panel); color: var(--ink);
+}
+button:hover { border-color: var(--ink2); }
+pre {
+  margin: 0; padding: 14px; overflow-x: auto;
+  background: var(--code-bg); border-radius: 8px;
+  font: 12.5px/1.5 ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  tab-size: 2;
+}
+footer { margin-top: 24px; font-size: 13px; color: var(--ink2); max-width: 78ch; }
+footer p + p { margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>All-pass 90° phase shifter designer</h1>
+  <p class="lede">Designs the two all-pass filter chains used for phasing SSB. Enter your sample rate and audio band; the page works out the coefficients that hold the two outputs 90° apart across that band, and shows how well they do it.</p>
+
+  <form class="controls" id="controls" novalidate onsubmit="return false">
+    <div class="field">
+      <label for="fs">Sample rate (Hz)</label>
+      <input id="fs" type="number" inputmode="decimal" min="1" step="any" aria-describedby="fsErr">
+      <div class="err" id="fsErr" role="alert"></div>
+    </div>
+    <div class="field">
+      <label for="lo">Band from (Hz)</label>
+      <input id="lo" type="number" inputmode="decimal" min="0" step="any" aria-describedby="loErr">
+      <div class="err" id="loErr" role="alert"></div>
+    </div>
+    <div class="field">
+      <label for="hi">Band to (Hz)</label>
+      <input id="hi" type="number" inputmode="decimal" min="0" step="any" aria-describedby="hiErr">
+      <div class="err" id="hiErr" role="alert"></div>
+    </div>
+    <div class="field">
+      <label for="n">Sections per chain</label>
+      <select id="n">
+        <option>2</option><option>3</option><option>4</option><option>5</option>
+        <option>6</option><option>7</option><option>8</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="dp">Decimal places</label>
+      <select id="dp"><option>5</option><option>6</option><option>7</option></select>
+    </div>
+  </form>
+
+  <div id="results">
+    <section class="panel" aria-labelledby="heroWords">
+      <div class="headline" aria-live="polite">
+        <div class="figure"><span id="hero">–</span><span class="unit">dB</span></div>
+        <div class="words">
+          <p id="heroWords"></p>
+          <p id="heroNote"></p>
+        </div>
+      </div>
+
+      <div class="charts" id="charts" tabindex="0" role="group"
+           aria-label="Response charts. Use the left and right arrow keys to read values along the frequency axis.">
+        <figure>
+          <figcaption>Opposite-sideband suppression (dB)</figcaption>
+          <div class="plot" id="plotSupp"></div>
+        </figure>
+        <figure>
+          <figcaption>Phase error from 90° (degrees)</figcaption>
+          <div class="plot" id="plotErr"></div>
+        </figure>
+        <div class="xtitle">Frequency (Hz), log scale</div>
+        <div class="tip" id="tip" hidden aria-live="polite"></div>
+      </div>
+    </section>
+
+    <div class="cols">
+      <section class="panel a-coef" aria-labelledby="hCoef">
+        <h2 id="hCoef">Coefficients</h2>
+        <div class="tablewrap"><table id="coefTable"></table></div>
+        <p class="note">Each section is y = k·(x + y₁) − x₁. “90° at” is the frequency where that one section shifts by 90°. The order of sections within a chain does not affect the result.</p>
+      </section>
+      <section class="panel a-code" aria-labelledby="hCode">
+        <div class="codehead">
+          <h2 id="hCode">C code</h2>
+          <button type="button" id="copy">Copy code</button>
+        </div>
+        <pre id="code" tabindex="0"></pre>
+      </section>
+      <section class="panel a-resp" aria-labelledby="hTable">
+        <h2 id="hTable">Response at spot frequencies</h2>
+        <div class="tablewrap"><table id="respTable"></table></div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <p>The design is the optimum equal-ripple (elliptic) 90° phase-difference network, mapped to the sample rate with the band edges pre-warped, so the result is exact for the digital filter. All figures on this page are calculated from the rounded coefficients shown.</p>
+    <p>Suppression assumes both chains feed equal amplitudes: 20·log₁₀(tan(phase error ÷ 2)). Everything runs in this file; nothing is loaded or sent anywhere.</p>
+  </footer>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = 'allpass-designer-v1';
+  var DEF = { fs: 31250, lo: 150, hi: 3000, n: 4, dp: 7 };
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var MINUS = '−';
+  var current = null;           // last valid design
+  var hoverF = null;            // frequency under the crosshair
+
+  /* ---------- design maths ---------- */
+
+  // Elliptic all-pass pair. Band edges are bilinear pre-warped, the analogue
+  // optimum has poles at wl * sn/cn((4r+1)K/(4n), k'), with k = wl/wh.
+  function design(fs, lo, hi, n) {
+    var wl = Math.tan(Math.PI * lo / fs), wh = Math.tan(Math.PI * hi / fs), k = wl / wh;
+    // arithmetic-geometric mean for modulus k' = sqrt(1 - k^2)
+    var a = [1], c = [Math.sqrt(Math.max(0, 1 - k * k))], b = k, i = 0;
+    while (Math.abs(c[i]) > 1e-16 && i < 60) {
+      var an = (a[i] + b) / 2, cn = (a[i] - b) / 2;
+      b = Math.sqrt(a[i] * b); a.push(an); c.push(cn); i++;
+    }
+    var N = i, K = Math.PI / (2 * a[N]), tot = 2 * n, A = [], B = [];
+    for (var r = 0; r < tot; r++) {
+      var phi = Math.pow(2, N) * a[N] * (4 * r + 1) * K / (2 * tot);
+      for (var j = N; j > 0; j--) phi = (phi + Math.asin(c[j] * Math.sin(phi) / a[j])) / 2;
+      var p = wl * Math.tan(phi);
+      (p > 0 ? A : B).push(Math.abs(p));
+    }
+    var toK = function (p) { return (1 - p) / (1 + p); };
+    var asc = function (x, y) { return x - y; };
+    A.sort(asc); B.sort(asc);                       // ascending pole = ascending 90° frequency
+    return { a: A.map(toK), b: B.map(toK) };
+  }
+
+  function chainPhase(ks, w) {
+    var cw = Math.cos(w), sw = Math.sin(w), s = 0;
+    for (var i = 0; i < ks.length; i++) s += Math.atan2(sw, ks[i] - cw) - Math.atan2(ks[i] * sw, 1 - ks[i] * cw);
+    return s;
+  }
+  // phase(chain 1) - phase(chain 2), degrees, wrapped to (-180, 180]
+  function phaseDiff(d, f) {
+    var w = 2 * Math.PI * f / d.fs;
+    var x = (chainPhase(d.k1, w) - chainPhase(d.k2, w)) * 180 / Math.PI;
+    x = ((x + 180) % 360 + 360) % 360 - 180;
+    return x;
+  }
+  function errOf(diff) { return Math.abs(diff) - 90; }          // degrees from 90
+  function suppOf(err) {                                         // dB, positive = better
+    var e = Math.abs(err);
+    if (e === 0) return Infinity;
+    if (e >= 90) return 0;
+    return -20 * Math.log10(Math.tan(e * Math.PI / 360));
+  }
+  function worstIn(d, lo, hi) {
+    var M = 4000, w = 0, r = Math.log(hi / lo);
+    for (var i = 0; i <= M; i++) {
+      var e = Math.abs(errOf(phaseDiff(d, lo * Math.exp(r * i / M))));
+      if (e > w) w = e;
+    }
+    return w;
+  }
+  function f90(k, fs) { return fs / Math.PI * Math.atan((1 - k) / (1 + k)); }
+
+  function build(inp) {
+    var ex = design(inp.fs, inp.lo, inp.hi, inp.n);
+    var rnd = function (v) { return Number(v.toFixed(inp.dp)); };
+    var d = { fs: inp.fs, lo: inp.lo, hi: inp.hi, n: inp.n, dp: inp.dp, k1: ex.a.map(rnd), k2: ex.b.map(rnd) };
+    var exact = { fs: inp.fs, k1: ex.a, k2: ex.b };
+    // keep the convention phase(fap1f) - phase(fap2f) = -90 degrees
+    if (phaseDiff(exact, Math.sqrt(inp.lo * inp.hi)) > 0) {
+      var t = d.k1; d.k1 = d.k2; d.k2 = t;
+      t = exact.k1; exact.k1 = exact.k2; exact.k2 = t;
+    }
+    d.worstErr = worstIn(d, inp.lo, inp.hi);
+    d.worstSupp = suppOf(d.worstErr);
+    d.exactSupp = suppOf(worstIn(exact, inp.lo, inp.hi));
+    return d;
+  }
+
+  /* ---------- formatting ---------- */
+
+  function fmtHz(f) {
+    if (f >= 1000) return Math.round(f).toLocaleString('en-US');
+    if (f >= 100) return String(Math.round(f));
+    return String(Number(f.toPrecision(3)));
+  }
+  function fmtTick(f) {
+    if (f >= 1000) return Number((f / 1000).toPrecision(3)) + 'k';
+    return String(Number(f.toPrecision(3)));
+  }
+  function fmtSigned(v, dec) {
+    var s = Math.abs(v).toFixed(dec);
+    if (Number(s) === 0) return s;
+    return (v < 0 ? MINUS : '+') + s;
+  }
+  function fmtDeg(v, dec) { return (v < 0 ? MINUS : '') + Math.abs(v).toFixed(dec) + '°'; }
+  function errDecimals(e) { return e < 0.01 ? 4 : e < 1 ? 3 : e < 10 ? 2 : 1; }
+  function fmtSupp(s) { return isFinite(s) ? s.toFixed(1) : '> 200'; }
+  function fmtK(k, dp) { return (k < 0 ? MINUS : '') + Math.abs(k).toFixed(dp); }
+  function nice(v, up) {
+    var e = Math.pow(10, Math.floor(Math.log10(v))), m = v / e, st = [1, 2, 5, 10], i;
+    if (up) { for (i = 0; i < 4; i++) if (m <= st[i] * (1 + 1e-9)) return st[i] * e; }
+    else { for (i = 3; i >= 0; i--) if (m >= st[i] * (1 - 1e-9)) return st[i] * e; }
+    return v;
+  }
+
+  /* ---------- charts ---------- */
+
+  function el(name, attrs, text) {
+    var n = document.createElementNS(SVGNS, name);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  var geom = null;   // shared x geometry + per-chart y mapping, for the hover layer
+
+  function renderCharts(d) {
+    var W = Math.max(320, Math.floor($('plotSupp').clientWidth));
+    var m = { l: 46, r: 14, t: 22, b: 26 };
+    var x0 = nice(d.lo / 3, false), x1 = Math.min(d.fs / 2, nice(d.hi * 2, true));
+    if (x1 <= d.hi) x1 = d.fs / 2;
+    var lx0 = Math.log10(x0), lx1 = Math.log10(x1), pw = W - m.l - m.r;
+    var X = function (f) { return m.l + (Math.log10(f) - lx0) / (lx1 - lx0) * pw; };
+    var Xinv = function (px) { return Math.pow(10, lx0 + (px - m.l) / pw * (lx1 - lx0)); };
+
+    // sample the response once for both charts
+    var M = Math.max(600, pw * 2), pts = [], i;
+    for (i = 0; i <= M; i++) {
+      var f = Math.pow(10, lx0 + (lx1 - lx0) * i / M), e = errOf(phaseDiff(d, f));
+      pts.push({ f: f, e: e, s: suppOf(e) });
+    }
+
+    // --- suppression chart ---
+    var H1 = 300, ph1 = H1 - m.t - m.b;
+    var yMax = Math.min(200, Math.max(40, Math.ceil((d.worstSupp + 28) / 20) * 20));
+    var yStep = yMax <= 80 ? 10 : 20;
+    var Y1 = function (s) { return m.t + (1 - Math.min(s, yMax + 20) / yMax) * ph1; };
+    var svg1 = frame(W, H1, m, X, x0, x1, d, 'c1');
+    var gy;
+    for (gy = 0; gy <= yMax; gy += yStep) {
+      svg1.grid.appendChild(el('line', { x1: m.l, x2: W - m.r, y1: Y1(gy), y2: Y1(gy), class: gy === 0 ? 'g-axis' : 'g-major' }));
+      svg1.labels.appendChild(el('text', { x: m.l - 8, y: Y1(gy) + 4, 'text-anchor': 'end' }, String(gy)));
+    }
+    var path = '', prev = null;
+    for (i = 0; i < pts.length; i++) {
+      var p = pts[i];
+      if (prev && prev.e * p.e < 0) {            // error crosses zero: suppression is unbounded here
+        var fz = Math.exp(Math.log(prev.f) + (Math.log(p.f) - Math.log(prev.f)) * prev.e / (prev.e - p.e));
+        path += 'L' + X(fz).toFixed(2) + ' ' + Y1(Infinity).toFixed(2);
+      }
+      path += (i ? 'L' : 'M') + X(p.f).toFixed(2) + ' ' + Y1(p.s).toFixed(2);
+      prev = p;
+    }
+    svg1.data.appendChild(el('path', { d: path, class: 'g-trace' }));
+    var bandPx = X(d.hi) - X(d.lo);
+    if (isFinite(d.worstSupp)) {
+      svg1.over.appendChild(el('line', { x1: X(d.lo), x2: X(d.hi), y1: Y1(d.worstSupp), y2: Y1(d.worstSupp), class: 'g-ref' }));
+      if (bandPx > 150 && Y1(d.worstSupp) + 18 < m.t + ph1)
+        svg1.over.appendChild(el('text', { x: X(d.lo) + 8, y: Y1(d.worstSupp) + 16, class: 'lbl' }, 'worst case ' + d.worstSupp.toFixed(1) + ' dB'));
+    }
+    if (bandPx > 90)
+      svg1.over.appendChild(el('text', { x: (X(d.lo) + X(d.hi)) / 2, y: m.t - 7, 'text-anchor': 'middle', class: 'lbl' }, 'design band'));
+    mount('plotSupp', svg1, d, 'Opposite-sideband suppression against frequency. Worst case inside the design band is ' + fmtSupp(d.worstSupp) + ' dB.');
+
+    // --- phase error chart ---
+    var H2 = 190, m2 = { l: m.l, r: m.r, t: 10, b: m.b }, ph2 = H2 - m2.t - m2.b;
+    var L = nice(Math.max(d.worstErr, 1e-6) * 2.5, true);
+    var Y2 = function (e) { return m2.t + (1 - (Math.max(-2 * L, Math.min(2 * L, e)) + L) / (2 * L)) * ph2; };
+    var svg2 = frame(W, H2, m2, X, x0, x1, d, 'c2');
+    var tk = [-L, -L / 2, 0, L / 2, L];
+    for (i = 0; i < tk.length; i++) {
+      svg2.grid.appendChild(el('line', { x1: m.l, x2: W - m.r, y1: Y2(tk[i]), y2: Y2(tk[i]), class: tk[i] === 0 ? 'g-axis' : 'g-major' }));
+      var lab = tk[i] === 0 ? '0' : (tk[i] < 0 ? MINUS : '') + String(Number(Math.abs(tk[i]).toPrecision(3)));
+      svg2.labels.appendChild(el('text', { x: m.l - 8, y: Y2(tk[i]) + 4, 'text-anchor': 'end' }, lab));
+    }
+    path = '';
+    for (i = 0; i < pts.length; i++) path += (i ? 'L' : 'M') + X(pts[i].f).toFixed(2) + ' ' + Y2(pts[i].e).toFixed(2);
+    svg2.data.appendChild(el('path', { d: path, class: 'g-trace' }));
+    mount('plotErr', svg2, d, 'Phase error against frequency. Inside the design band it stays within plus or minus ' + d.worstErr.toFixed(errDecimals(d.worstErr)) + ' degrees.');
+
+    geom = { W: W, m: m, X: X, Xinv: Xinv, x0: x0, x1: x1,
+             c: [{ svg: svg1, Y: Y1, top: m.t, bot: m.t + ph1, val: function (r) { return r.s; }, lim: yMax },
+                 { svg: svg2, Y: Y2, top: m2.t, bot: m2.t + ph2, val: function (r) { return r.e; }, lim: L }] };
+    if (hoverF != null) showAt(Math.min(x1, Math.max(x0, hoverF)), null);
+  }
+
+  // common frame: band wash, log-paper grid, x tick labels, clip, crosshair
+  function frame(W, H, m, X, x0, x1, d, id) {
+    var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, height: H, role: 'img' });
+    var top = m.t, bot = H - m.b;
+    var defs = el('defs', {}), cp = el('clipPath', { id: 'clip-' + id });
+    cp.appendChild(el('rect', { x: m.l, y: top, width: W - m.l - m.r, height: bot - top }));
+    defs.appendChild(cp); svg.appendChild(defs);
+    var grid = el('g', {}), labels = el('g', {}), data = el('g', { 'clip-path': 'url(#clip-' + id + ')' }), over = el('g', {});
+    svg.appendChild(el('rect', { x: X(d.lo), y: top, width: X(d.hi) - X(d.lo), height: bot - top, class: 'g-band' }));
+    var decPx = (W - m.l - m.r) / (Math.log10(x1) - Math.log10(x0));
+    for (var ex = Math.floor(Math.log10(x0)); ex <= Math.ceil(Math.log10(x1)); ex++) {
+      for (var mt = 1; mt <= 9; mt++) {
+        var f = mt * Math.pow(10, ex);
+        if (f < x0 * (1 - 1e-9) || f > x1 * (1 + 1e-9)) continue;
+        grid.appendChild(el('line', { x1: X(f), x2: X(f), y1: top, y2: bot, class: mt === 1 ? 'g-major' : 'g-minor' }));
+        if (mt === 1 || (decPx > 150 && (mt === 2 || mt === 5)) || (decPx > 420 && mt === 3))
+          labels.appendChild(el('text', { x: X(f), y: bot + 17, 'text-anchor': 'middle' }, fmtTick(f)));
+      }
+    }
+    svg.appendChild(grid); svg.appendChild(labels); svg.appendChild(data); svg.appendChild(over);
+    var cross = el('line', { y1: top, y2: bot, class: 'g-cross', visibility: 'hidden' });
+    var dot = el('circle', { r: 4, class: 'g-dot', visibility: 'hidden' });
+    svg.appendChild(cross); svg.appendChild(dot);
+    return { svg: svg, grid: grid, labels: labels, data: data, over: over, cross: cross, dot: dot };
+  }
+  function mount(id, s, d, label) {
+    s.svg.setAttribute('aria-label', label);
+    var host = $(id);
+    while (host.firstChild) host.removeChild(host.firstChild);
+    host.appendChild(s.svg);
+  }
+
+  /* ---------- hover and keyboard readout ---------- */
+
+  function showAt(f, clientY) {
+    if (!geom || !current) return;
+    hoverF = f;
+    var diff = phaseDiff(current, f), e = errOf(diff), r = { e: e, s: suppOf(e) }, px = geom.X(f);
+    geom.c.forEach(function (c, idx) {
+      c.svg.cross.setAttribute('x1', px); c.svg.cross.setAttribute('x2', px);
+      c.svg.cross.setAttribute('visibility', 'visible');
+      var v = c.val(r), on = idx === 0 ? v <= c.lim : Math.abs(v) <= c.lim;
+      c.svg.dot.setAttribute('cx', px); c.svg.dot.setAttribute('cy', c.Y(v));
+      c.svg.dot.setAttribute('visibility', on ? 'visible' : 'hidden');
+    });
+    var tip = $('tip');
+    while (tip.firstChild) tip.removeChild(tip.firstChild);
+    var head = document.createElement('div'); head.className = 't-f'; head.textContent = fmtHz(f) + ' Hz';
+    tip.appendChild(head);
+    var dec = errDecimals(Math.abs(e));
+    [[fmtSupp(r.s) + ' dB', 'suppression'], [fmtDeg(diff, Math.min(3, dec)), 'phase difference'], [fmtSigned(e, dec) + '°', 'error']].forEach(function (row) {
+      var div = document.createElement('div'); div.className = 't-row';
+      var b = document.createElement('b'); b.textContent = row[0];
+      var sp = document.createElement('span'); sp.textContent = row[1];
+      div.appendChild(b); div.appendChild(sp); tip.appendChild(div);
+    });
+    tip.hidden = false;
+    var host = $('charts'), hw = host.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+    var left = px + 14; if (left + tw > hw) left = px - 14 - tw; if (left < 0) left = 0;
+    var topPx = clientY == null ? 40 : clientY - host.getBoundingClientRect().top - th - 12;
+    topPx = Math.max(0, Math.min(host.clientHeight - th, topPx));
+    tip.style.left = left + 'px'; tip.style.top = topPx + 'px';
+  }
+  function hideTip() {
+    hoverF = null;
+    $('tip').hidden = true;
+    if (geom) geom.c.forEach(function (c) { c.svg.cross.setAttribute('visibility', 'hidden'); c.svg.dot.setAttribute('visibility', 'hidden'); });
+  }
+  function wireHover() {
+    var host = $('charts');
+    host.addEventListener('pointermove', function (ev) {
+      if (!geom) return;
+      var plot = ev.target.closest ? ev.target.closest('.plot') : null;
+      if (!plot) { if (document.activeElement !== host) hideTip(); return; }
+      var rect = plot.getBoundingClientRect(), px = (ev.clientX - rect.left) * geom.W / rect.width;
+      if (px < geom.m.l || px > geom.W - geom.m.r) { hideTip(); return; }
+      showAt(geom.Xinv(px), ev.clientY);
+    });
+    host.addEventListener('pointerleave', function () { if (document.activeElement !== host) hideTip(); });
+    host.addEventListener('focus', function () { if (current && hoverF == null) showAt(Math.sqrt(current.lo * current.hi), null); });
+    host.addEventListener('blur', hideTip);
+    host.addEventListener('keydown', function (ev) {
+      if (!geom || !current) return;
+      var f = hoverF == null ? Math.sqrt(current.lo * current.hi) : hoverF, step = Math.pow(2, (ev.shiftKey ? 4 : 1) / 24);
+      if (ev.key === 'ArrowRight') f *= step;
+      else if (ev.key === 'ArrowLeft') f /= step;
+      else if (ev.key === 'Home') f = current.lo;
+      else if (ev.key === 'End') f = current.hi;
+      else if (ev.key === 'Escape') { hideTip(); return; }
+      else return;
+      ev.preventDefault();
+      showAt(Math.min(geom.x1, Math.max(geom.x0, f)), null);
+    });
+  }
+
+  /* ---------- tables and code ---------- */
+
+  function cell(tag, text) { var c = document.createElement(tag); c.textContent = text; return c; }
+  function fillTable(id, head, rows) {
+    var t = $(id);
+    while (t.firstChild) t.removeChild(t.firstChild);
+    var thead = document.createElement('thead'), tr = document.createElement('tr');
+    head.forEach(function (h) { var th = cell('th', h); th.scope = 'col'; tr.appendChild(th); });
+    thead.appendChild(tr); t.appendChild(thead);
+    var tb = document.createElement('tbody');
+    rows.forEach(function (r) {
+      var row = document.createElement('tr');
+      if (r.cls) row.className = r.cls;
+      r.cells.forEach(function (c, i) {
+        var td = cell('td', c);
+        if (i === 0 && r.tag) { var s = document.createElement('span'); s.className = 'tag'; s.textContent = r.tag; td.appendChild(s); }
+        row.appendChild(td);
+      });
+      tb.appendChild(row);
+    });
+    t.appendChild(tb);
+  }
+
+  function renderCoef(d) {
+    var rows = [];
+    for (var i = 0; i < d.n; i++)
+      rows.push({ cells: ['k' + (i + 1), fmtK(d.k1[i], d.dp), fmtHz(f90(d.k1[i], d.fs)), fmtK(d.k2[i], d.dp), fmtHz(f90(d.k2[i], d.fs))] });
+    fillTable('coefTable', ['Section', 'fap1f', '90° at (Hz)', 'fap2f', '90° at (Hz)'], rows);
+  }
+
+  function renderResp(d) {
+    var x0 = geom.x0, x1 = geom.x1, list = [d.lo, d.hi], mant = [1, 1.5, 2, 2.5, 3, 4, 5, 7];
+    for (var ex = Math.floor(Math.log10(x0)); ex <= Math.ceil(Math.log10(x1)); ex++)
+      mant.forEach(function (mt) { var f = mt * Math.pow(10, ex); if (f >= x0 * 0.999 && f <= x1 * 1.001) list.push(f); });
+    list.sort(function (a, b) { return a - b; });
+    var rows = [], last = -1;
+    list.forEach(function (f) {
+      if (Math.abs(f - last) < 1e-6 * f) return;
+      last = f;
+      var diff = phaseDiff(d, f), e = errOf(diff), dec = errDecimals(Math.abs(e));
+      var edge = f === d.lo || f === d.hi, inside = f >= d.lo && f <= d.hi;
+      rows.push({ cls: inside ? '' : 'out', tag: edge ? 'band edge' : '',
+                  cells: [fmtHz(f), fmtDeg(diff, Math.min(3, dec)), fmtSigned(e, dec) + '°', fmtSupp(suppOf(e)) + ' dB'] });
+    });
+    fillTable('respTable', ['Frequency (Hz)', 'Phase difference', 'Error from 90°', 'Suppression'], rows);
+  }
+
+  function cCode(d) {
+    var lit = function (k) { return k.toFixed(d.dp) + 'f'; };
+    var fn = function (name, ks) {
+      var L = [], i, n = ks.length;
+      L.push('  static const float __not_in_flash_func(' + name + ')(const float s)');
+      L.push('  {');
+      for (i = 0; i < n; i++) L.push('    // all pass ' + fmtHz(f90(ks[i], d.fs)).replace(/,/g, '') + ' @ ' + d.fs);
+      for (i = 0; i < n; i++) L.push('    static const float k' + (i + 1) + ' = ' + lit(ks[i]) + ';');
+      for (i = 1; i <= n; i++) { L.push('    static float x' + i + ' = 0.0f;'); L.push('    static float y' + i + ' = 0.0f;'); }
+      for (i = 1; i <= n; i++) {
+        L.push('    y' + i + ' = (k' + i + ' * (' + (i === 1 ? 's' : 'y' + (i - 1)) + ' + y' + i + ')) - x' + i + ';');
+        L.push('    x' + i + ' = ' + (i === 1 ? 's' : 'y' + (i - 1)) + ';');
+      }
+      L.push('    return y' + n + ';');
+      L.push('  }');
+      return L.join('\n');
+    };
+    var head = '  // ' + d.n + '-section all-pass pair, ' + fmtHz(d.lo).replace(/,/g, '') + '-' + fmtHz(d.hi).replace(/,/g, '') + ' Hz @ ' + d.fs + ' Hz\n' +
+               '  // phase(fap1f) - phase(fap2f) = -90 degrees, within ' + d.worstErr.toFixed(errDecimals(d.worstErr)) + ' degrees\n' +
+               '  // worst-case opposite-sideband suppression ' + fmtSupp(d.worstSupp) + ' dB\n';
+    return head + fn('fap1f', d.k1) + '\n\n' + fn('fap2f', d.k2) + '\n';
+  }
+
+  /* ---------- inputs ---------- */
+
+  function setErr(id, msg) {
+    $(id + 'Err').textContent = msg || '';
+    $(id).setAttribute('aria-invalid', msg ? 'true' : 'false');
+  }
+  function read() {
+    var v = { fs: parseFloat($('fs').value), lo: parseFloat($('lo').value), hi: parseFloat($('hi').value),
+              n: parseInt($('n').value, 10), dp: parseInt($('dp').value, 10) };
+    var ok = true;
+    if (!(v.fs > 0) || !isFinite(v.fs)) { setErr('fs', 'Enter a sample rate above 0.'); ok = false; } else setErr('fs', '');
+    if (!(v.lo > 0) || !isFinite(v.lo)) { setErr('lo', 'Enter a frequency above 0.'); ok = false; } else setErr('lo', '');
+    if (!(v.hi > 0) || !isFinite(v.hi)) { setErr('hi', 'Enter a frequency above 0.'); ok = false; }
+    else if (v.lo > 0 && v.hi <= v.lo) { setErr('hi', 'Must be higher than the start of the band.'); ok = false; }
+    else if (v.fs > 0 && v.hi >= v.fs / 2) { setErr('hi', 'Must be below half the sample rate (' + fmtHz(v.fs / 2) + ' Hz).'); ok = false; }
+    else setErr('hi', '');
+    return ok ? v : null;
+  }
+
+  function update() {
+    var v = read();
+    $('results').classList.toggle('stale', !v);
+    if (!v) return;
+    var d = build(v);
+    current = d;
+    $('hero').textContent = fmtSupp(d.worstSupp);
+    var dec = errDecimals(d.worstErr);
+    $('heroWords').textContent = 'Worst-case opposite-sideband suppression across ' + fmtHz(d.lo) + '–' + fmtHz(d.hi) +
+      ' Hz. The phase difference stays within ±' + d.worstErr.toFixed(dec) + '° of 90°.';
+    var cost = d.exactSupp - d.worstSupp;
+    $('heroNote').textContent = (isFinite(cost) && cost > 0.3)
+      ? 'Rounding to ' + d.dp + ' decimal places costs ' + cost.toFixed(1) + ' dB of the ' + d.exactSupp.toFixed(1) +
+        ' dB this design can reach. ' + (d.dp < 7 ? 'Choose more decimal places to recover it.' : 'Seven places is all a 32-bit float can hold.')
+      : '';
+    renderCharts(d);
+    renderCoef(d);
+    renderResp(d);
+    $('code').textContent = cCode(d);
+    try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) { /* storage unavailable: carry on */ }
+  }
+
+  function init() {
+    var s = DEF;
+    try {
+      var raw = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (raw && raw.fs > 0 && raw.lo > 0 && raw.hi > raw.lo && raw.n >= 2 && raw.n <= 8 && raw.dp >= 5 && raw.dp <= 7) s = raw;
+    } catch (e) { /* ignore */ }
+    $('fs').value = s.fs; $('lo').value = s.lo; $('hi').value = s.hi; $('n').value = s.n; $('dp').value = s.dp;
+    ['fs', 'lo', 'hi', 'n', 'dp'].forEach(function (id) {
+      $(id).addEventListener('input', update);
+      $(id).addEventListener('change', update);
+    });
+    $('copy').addEventListener('click', function () {
+      var text = $('code').textContent, btn = $('copy');
+      var done = function (ok) {
+        btn.textContent = ok ? 'Copied' : 'Select the code and copy it';
+        setTimeout(function () { btn.textContent = 'Copy code'; }, 1800);
+      };
+      var fallback = function () {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta); done(ok);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+      else fallback();
+    });
+    wireHover();
+    var lastW = 0;
+    window.addEventListener('resize', function () {
+      var w = $('plotSupp').clientWidth;
+      if (current && w !== lastW) { lastW = w; renderCharts(current); }
+    });
+    update();
+  }
+  window.__allpass = { design: design, build: build };   // exposed for checking from the console
+  init();
+})();
+</script>
+</body>
+</html>
